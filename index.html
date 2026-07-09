@@ -3549,6 +3549,9 @@ function buildChart(opts){
 
 // ---- significators ----
 function planetsInStarOf(chart, lord){ return PLANETS.filter(p=>chart.planets[p].star_lord===lord); }
+function isSelfStar(chart,p){ return chart.planets[p].star_lord===p; }
+function isUntenanted(chart,p){ return planetsInStarOf(chart,p).length===0; }
+function planetMarker(chart,p){ return isSelfStar(chart,p)?"!":(isUntenanted(chart,p)?"*":""); }
 function occupants(chart, house){ return PLANETS.filter(p=>chart.planets[p].house===house); }
 function cuspalSignificators(chart, house){
   const occ=occupants(chart,house); const owner=chart.cusps[house-1].sign_lord;
@@ -3620,7 +3623,7 @@ function currentDasha(timeline, when){ const chain=[]; let nodes=timeline;
     if(!act) break; chain.push([act.lord,act.level]); nodes=act.children; } return chain; }
 
 return {PLANETS,RASIS,NAKS,resolve,build249,buildChart,ayanamsa,
-        cuspalSignificators,strongestCuspal,housesSignifiedBy,houseSignificators,
+        cuspalSignificators,strongestCuspal,housesSignifiedBy,houseSignificators,planetMarker,isSelfStar,isUntenanted,
         planetSignifies,sigHouses,rulingPlanets,moonBalance,mahadashaTimeline,currentDasha,
         MOVABLE,FIXED,DUAL,BARREN,RASI_LORD,dms,norm};
 });
@@ -4913,6 +4916,38 @@ function learnClear() {
   if (confirm("Delete ALL feedback records on this device?")) { KLEARN.clearAll(); renderLearning(); }
 }
 
+function downloadSignificatorsXls() {
+  if (!CHART) return;
+  const c = CHART; const mk = p => p + KP.planetMarker(c, p);
+  const cell = arr => arr.map(mk).join(", ");
+  let rows = "<tr><th>House</th><th>A: star of occupant</th><th>B: occupant</th>"
+    + "<th>C: star of owner</th><th>D: owner</th></tr>";
+  for (let h = 1; h <= 12; h++) {
+    const s = KP.cuspalSignificators(c, h);
+    rows += `<tr><td>${h}</td><td>${cell(s.A)}</td><td>${cell(s.B)}</td>`
+      + `<td>${cell(s.C)}</td><td>${cell(s.D)}</td></tr>`;
+  }
+  let rows2 = "<tr><th>Planet</th><th>Marker</th><th>Signifies houses</th></tr>";
+  for (const n of KP.PLANETS) {
+    const m = [...KP.sigHouses(c, n)].sort((a, b) => a - b).join(", ");
+    rows2 += `<tr><td>${n}</td><td>${KP.planetMarker(c, n)}</td><td>${m}</td></tr>`;
+  }
+  const w = CHART.when;
+  const title = `Significators - ${w.year}-${String(w.month).padStart(2,"0")}-`
+    + `${String(w.day).padStart(2,"0")} ${String(w.hour).padStart(2,"0")}:`
+    + `${String(w.minute).padStart(2,"0")}`;
+  const html = `<html><head><meta charset="utf-8"></head><body>`
+    + `<h3>${title}</h3><table border="1">${rows}</table>`
+    + `<p>! = planet in its own star (self-star); * = untenanted (no planet in its star)</p>`
+    + `<h3>Houses signified by each planet</h3><table border="1">${rows2}</table>`
+    + `</body></html>`;
+  const blob = new Blob([html], { type: "application/vnd.ms-excel" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "kp_significators.xls";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+
 function renderSummary() {
   const c = CHART; const asc = c.cusps[0]; const mo = c.planets.Moon;
   const mb = KP.moonBalance(mo.longitude); let h = "";
@@ -4973,22 +5008,30 @@ const RENDER = {
       + `factor for each house in KP.</div>`;
   },
   sig: c => {
-    let r = `<table><tr><th>H</th><th>A: star of occupant</th><th>B: occupant</th>`
+    const mk = p => p + KP.planetMarker(c, p);         // append ! or *
+    const list = arr => arr.map(mk).join(", ") || "-";
+    let r = `<button type="button" onclick="downloadSignificatorsXls()" `
+      + `style="background:var(--panel2);color:var(--ink);border:1px solid var(--line);`
+      + `font-size:12px;float:right;margin-bottom:6px">Download Excel</button>`
+      + `<table><tr><th>H</th><th>A: star of occupant</th><th>B: occupant</th>`
       + `<th>C: star of owner</th><th>D: owner</th></tr>`;
     for (let h = 1; h <= 12; h++) {
       const s = KP.cuspalSignificators(c, h);
-      r += `<tr><td><b>${h}</b></td><td>${s.A.join(", ") || "-"}</td>`
-        + `<td>${s.B.join(", ") || "-"}</td><td>${s.C.join(", ") || "-"}</td>`
-        + `<td>${s.D.join(", ")}</td></tr>`;
+      r += `<tr><td><b>${h}</b></td><td>${list(s.A)}</td>`
+        + `<td>${list(s.B)}</td><td>${list(s.C)}</td>`
+        + `<td>${list(s.D)}</td></tr>`;
     }
     r += `</table><h3 style="font-size:13px;color:var(--muted);margin-top:16px">`
       + `Houses signified by each planet</h3>`
       + `<table><tr><th>Planet</th><th>Signifies houses</th></tr>`;
     for (const n of KP.PLANETS) {
       const m = [...KP.sigHouses(c, n)].sort((a, b) => a - b);
-      r += `<tr><td><b>${n}</b></td><td>${m.join(", ")}</td></tr>`;
+      r += `<tr><td><b>${mk(n)}</b></td><td>${m.join(", ")}</td></tr>`;
     }
-    return r + `</table>`;
+    r += `</table><div class="note"><b>!</b> = planet in its own star (self-star); `
+      + `<b>*</b> = untenanted (no planet in its star). Per the Golden Rules of KP, `
+      + `an untenanted planet gives strong results of what it signifies.</div>`;
+    return r;
   },
   dasha: c => {
     const birth = new Date(Date.UTC(c.when.year, c.when.month - 1, c.when.day,
