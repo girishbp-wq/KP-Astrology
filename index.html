@@ -3739,8 +3739,20 @@ function analyseEvent(c,name){
   const pos=new Set([...g.supporting,pc]); const neg=new Set(g.unfavorable);
   const ph=[...S].filter(h=>pos.has(h)), nh=[...S].filter(h=>neg.has(h));
   const score=ph.length-nh.length;
-  const verdict=score>0&&ph.length?"Favourable":score<0?"Unfavourable":"Mixed / weak";
-  return {event:g.event,primary_cusp:pc,csl:s,csl_signifies:[...S].sort((a,b)=>a-b),
+  const supported=score>0&&ph.length>0;
+  const ADV=["death","die","disease","sick","accident","loss","rape","imprison",
+    "abscond","danger","criminal","depression","removal","suspension","compulsory",
+    "theft","defect","problems","unnatural","break in service","secret activities"];
+  const adverse=ADV.some(k=>g.event.toLowerCase().includes(k));
+  const verdict=adverse
+    ? (supported?"Indicated":score<0?"Not indicated":"Weak / uncertain")
+    : (supported?"Favourable":score<0?"Unfavourable":"Mixed / weak");
+  const meaning=supported
+    ? "The chart SUPPORTS this event - it is astrologically indicated (not a comment on whether the outcome is good)."
+    : score<0 ? "The chart does NOT support this event - it is not clearly indicated."
+    : "Weak / mixed - the chart neither clearly supports nor denies this event.";
+  return {event:g.event,primary_cusp:pc,csl:s,adverse,supported,meaning,
+          csl_signifies:[...S].sort((a,b)=>a-b),
           supporting:g.supporting,favourable:g.favorable,unfavourable:g.unfavorable,
           positive_hits:ph.sort((a,b)=>a-b),negative_hits:nh.sort((a,b)=>a-b),verdict,
           significators:KP.houseSignificators(c,pc).map(([p,l])=>`${p}(${l})`)};
@@ -5145,10 +5157,15 @@ const RENDER = {
 function renderEvent() {
   const sel = document.getElementById("event"); if (!sel) return;
   const j = KPredict.analyseEvent(CHART, sel.value);
-  const cls = j.verdict === "Favourable" ? "good" : j.verdict === "Unfavourable" ? "bad" : "mid";
+  // colour by whether the event is SUPPORTED, flipped for adverse events:
+  // supported non-adverse = good; supported adverse (event likely) = cautionary.
+  const cls = j.supported ? (j.adverse ? "bad" : "good")
+    : (/Not indicated|Unfavourable/.test(j.verdict) ? (j.adverse ? "good" : "bad") : "mid");
   document.getElementById("evOut").innerHTML =
-    `<div class="pred"><h3>${esc(j.event)} - cusp ${j.primary_cusp}</h3>`
+    `<div class="pred"><h3>${esc(j.event)} - cusp ${j.primary_cusp}`
+    + `${j.adverse ? ' <span class="small">(adverse event)</span>' : ''}</h3>`
     + `<div class="v"><span class="pill ${cls}">${j.verdict}</span></div>`
+    + `<div class="note" style="margin-bottom:6px">${esc(j.meaning)}</div>`
     + `<div class="kv"><span>Cuspal sub-lord</span><b>${j.csl}</b></div>`
     + `<div class="kv"><span>CSL signifies</span><b>${j.csl_signifies.join(", ")}</b></div>`
     + `<div class="kv"><span>Supporting houses</span><b>${j.supporting.join(", ")}</b></div>`
