@@ -10392,31 +10392,88 @@ function education(c){ const reasons=[]; const streams=new Set();
   for(const h of [4,10,7]){ const s=csl(c,h); streams.add(s); reasons.push(`${h}th CSL = ${s} -> ${EDU[s]||""}.`); }
   return {topic:"Education",stream_planets:[...streams].sort(),reasons};
 }
-// karaka-driven events (caesarean etc.) - Mars/Ketu/Rahu or 8/12 tie to cusp
-const EVENT_KARAKAS={
-  "Caesarean":{planets:["Mars","Ketu","Rahu"],houses:[8,12],promiseCusp:5,
-    promiseHouses:[2,5,11],
-    note:"PROGENY chapter: Mars (surgery karaka), Ketu or Rahu, or the 8th/12th linked to the 5th -> delivery by surgery / C-section."},
-  "Rape":{planets:["Mars","Saturn","Rahu","Ketu"],houses:[8,12],promiseCusp:null,
-    promiseHouses:[],
-    note:"Violent malefic (Mars/Saturn/Rahu/Ketu) or 8/12 tied to the 5th -> assault risk indicated."}
+// ---- karaka / severity framework for adverse events (mirrors predictions.py)
+const ADV=["death","die","disease","sick","accident","loss","rape","imprison",
+  "abscond","danger","criminal","depression","removal","suspension","compulsory",
+  "theft","defect","problems","unnatural","break in service","secret activities"];
+function isProfessionEvent(n){ n=n.toLowerCase();
+  return n.includes("profession")||n.includes("programmer")||n.includes("practitioner")||n==="surgeons"; }
+function isAdverse(name){ const n=name.toLowerCase();
+  if(isProfessionEvent(n)) return false; return ADV.some(k=>n.includes(k)); }
+const KARAKA_NATURE={
+  Mars:"collision / cuts / burns / surgery", Saturn:"falls / fractures / chronic / obstruction",
+  Rahu:"sudden / mysterious / poisoning / electric", Ketu:"sudden / undiagnosed / accidental",
+  Sun:"bones / eyes / vitality", Moon:"mind / fluids / left eye",
+  Mercury:"nerves / speech / skin", Jupiter:"liver / growths", Venus:"reproductive / throat / kidney"};
+const _MAL=["Mars","Saturn","Rahu","Ketu"];
+const ADVERSE_PROFILES={
+  "Accident":{kind:"accident",core:[8],karakas:_MAL,aux:{4:"vehicular"}},
+  "Proneness to disease":{kind:"disease",core:[6,8,12],karakas:["Saturn","Mars","Rahu","Ketu","Moon"]},
+  "Disease- Nature & Part":{kind:"disease",core:[6,8,12],karakas:["Saturn","Mars","Rahu","Ketu","Moon"]},
+  "Disease unknown in medical science":{kind:"undiagnosed disease",core:[8,12],karakas:["Rahu","Ketu"]},
+  "Defect in Speech, Vision":{kind:"defect",core:[8,12],karakas:["Sun","Moon","Mercury","Saturn","Rahu"]},
+  "Younger co-born proneness to sickness":{kind:"disease (sibling)",core:[8,12],karakas:["Saturn","Mars","Rahu"]},
+  "Mother's proneness to sickness":{kind:"disease (mother)",core:[8,12],karakas:["Saturn","Mars","Rahu"]},
+  "Father's proneness to sickness":{kind:"disease (father)",core:[8,12],karakas:["Saturn","Mars","Rahu"]},
+  "Depression":{kind:"depression",core:[8,12],karakas:["Saturn","Moon","Rahu","Ketu"]},
+  "Caesarean":{kind:"surgery / C-section",core:[8,12],karakas:["Mars","Ketu","Rahu"],promiseCusp:5,promiseHouses:[2,5,11]},
+  "Rape":{kind:"assault",core:[8,12],karakas:_MAL},
+  "Committing rape":{kind:"assault",core:[8,12],karakas:["Mars","Rahu"]},
+  "Death due to accident":{kind:"death by accident",core:[8],karakas:["Mars","Saturn","Rahu"],caution:true},
+  "Death due to sickness":{kind:"death by illness",core:[8],karakas:["Saturn","Rahu","Ketu"],caution:true},
+  "Unnatural Death uranus":{kind:"unnatural death",core:[8,12],karakas:_MAL,caution:true},
+  "Unnatural death uranus":{kind:"unnatural death",core:[8,12],karakas:_MAL,caution:true},
+  "Unexpected Loss":{kind:"loss",core:[8,12],karakas:["Saturn","Rahu","Ketu"]},
+  "Loss in Investment":{kind:"financial loss",core:[8,12],karakas:["Saturn","Rahu","Ketu"]},
+  "Danger from opponents":{kind:"danger",core:[8,12],karakas:["Mars","Saturn","Rahu"]},
+  "Danger from involvement in secret activities":{kind:"danger",core:[8,12],karakas:["Rahu","Ketu","Saturn"]},
+  "Theft":{kind:"theft",core:[8,12],karakas:["Mercury","Rahu","Saturn"]},
+  "Absconding":{kind:"absconding",core:[8,12],karakas:["Rahu","Ketu","Saturn"]},
+  "Imprisonment 12th csl":{kind:"confinement",core:[8,12],karakas:["Saturn","Rahu","Ketu"]},
+  "Break in Service":{kind:"job loss",core:[8],karakas:["Saturn","Sun","Mars","Rahu"]},
+  "Removal from service":{kind:"removal",core:[8],karakas:["Saturn","Sun","Mars","Rahu"]},
+  "Suspension in Service":{kind:"suspension",core:[8],karakas:["Saturn","Sun","Mars","Rahu"]},
+  "Compulsory Retirement":{kind:"forced retirement",core:[8],karakas:["Saturn","Sun","Mars","Rahu"]},
+  "Problems in Business or Service":{kind:"career setback",core:[8],karakas:["Saturn","Mars","Rahu"]}
 };
-function karakaCheck(c,g,pc,s,S){
-  const kar=EVENT_KARAKAS[g.event]; if(!kar) return {indicated:null,reason:null};
-  const planets=kar.planets, houses=new Set(kar.houses);
+function profileFor(name){ return ADVERSE_PROFILES[name.replace(/'/g,"'")]||null; }
+function cap(s){ return s.charAt(0).toUpperCase()+s.slice(1); }
+function severityCheck(c,g,pc,s,S,baseSupported){
+  const prof=profileFor(g.event); if(!prof) return null;
+  const core=new Set(prof.core), karakas=prof.karakas;
   let promiseOk=true;
-  if(kar.promiseCusp){ const pcsl=csl(c,kar.promiseCusp);
-    promiseOk=[...sig(c,pcsl)].some(h=>kar.promiseHouses.includes(h)); }
-  const cslIsKaraka=planets.includes(s);
-  const linkers=planets.filter(p=>sig(c,p).has(pc));
-  const houseLink=[...S].filter(h=>houses.has(h));
-  const indicated=promiseOk&&(cslIsKaraka||linkers.length>0||houseLink.length>0);
-  if(!indicated) return {indicated:false,reason:null};
-  const bits=[];
-  if(cslIsKaraka) bits.push(`the ${pc}th sub-lord is ${s} (a surgery/malefic karaka)`);
-  else if(linkers.length) bits.push(`${linkers.join("/")} (karaka) signifies the ${pc}th`);
-  if(houseLink.length) bits.push(`the ${pc}th sub-lord signifies ${houseLink.sort((a,b)=>a-b).join(",")} (8=surgery, 12=hospital)`);
-  return {indicated:true,reason:kar.note+" Here "+bits.join("; and ")+"."};
+  if(prof.promiseCusp){ const pcsl=csl(c,prof.promiseCusp);
+    promiseOk=[...sig(c,pcsl)].some(h=>prof.promiseHouses.includes(h)); }
+  const coreHit=[...S].filter(h=>core.has(h)).sort((a,b)=>a-b);
+  const cslIsKaraka=karakas.includes(s);
+  const linkers=karakas.filter(p=>sig(c,p).has(pc));
+  const connected=(cslIsKaraka?[s]:[]).concat(linkers.filter(p=>p!==s));
+  const karakaLink=cslIsKaraka||linkers.length>0;
+  const natures=connected.map(p=>`${p} = ${KARAKA_NATURE[p]||""}`).join("; ");
+  const auxNotes=Object.entries(prof.aux||{}).filter(([h])=>S.has(+h)).map(([,l])=>l);
+  const caution=prof.caution?" NOTE: longevity/death must be judged with extreme caution and an accurate birth time.":"";
+  let mode,verdict,reason;
+  if(prof.promiseCusp){
+    if(promiseOk&&(karakaLink||coreHit.length)){
+      mode="strong"; verdict="Indicated"; const bits=[];
+      if(cslIsKaraka) bits.push(`the ${pc}th sub-lord is ${s} (karaka)`);
+      else if(linkers.length) bits.push(`${linkers.join("/")} (karaka) signifies the ${pc}th`);
+      if(coreHit.length) bits.push(`the ${pc}th sub-lord signifies ${coreHit.join(",")}`);
+      reason=cap(prof.kind)+" INDICATED: "+bits.join("; and ")+(natures?` - type: ${natures}`:"")+".";
+    } else { mode="none"; verdict="Not indicated";
+      reason=cap(prof.kind)+` not indicated: the base event is not promised, or no karaka (${karakas.join("/")}) / 8-12 link to the ${pc}th.`; }
+    return {mode,verdict,reason,event_type:prof.kind,karaka_planets:connected,karaka_indicated:mode==="strong"};
+  }
+  const anySupport=baseSupported||karakaLink||coreHit.length>0;
+  if(!anySupport){ mode="none"; verdict="Not indicated";
+    reason=cap(prof.kind)+` not indicated: neither the core house(s) ${[...core].sort((a,b)=>a-b)} nor the karaka planets (${karakas.join("/")}) connect to the ${pc}th.`+caution;
+  } else if(coreHit.length){ mode="strong"; verdict="Indicated";
+    const aux=auxNotes.length?" ("+auxNotes.join(", ")+")":"";
+    reason=cap(prof.kind)+` INDICATED: core severity house(s) ${coreHit} are connected`+(connected.length?` with ${connected.join("/")}`:"")+aux+(natures?` - type: ${natures}`:"")+"."+caution;
+  } else { mode="mild"; verdict="Mild proneness";
+    const aux=auxNotes.length?" "+cap(auxNotes.join(", "))+"-linked.":"";
+    reason=`Mild proneness only: peripheral houses connect but the core severity house(s) ${[...core].sort((a,b)=>a-b)} are NOT linked, so a serious ${prof.kind} is not promised.`+aux+(natures?` Flavour: ${natures}.`:"")+caution; }
+  return {mode,verdict,reason,event_type:prof.kind,karaka_planets:connected,karaka_indicated:mode==="strong"};
 }
 function analyseEvent(c,name){
   let g=GROUPINGS.find(x=>x.event.toLowerCase()===name.toLowerCase());
@@ -10424,31 +10481,32 @@ function analyseEvent(c,name){
   if(!g) return {error:`No grouping for '${name}'`,available:GROUPINGS.map(x=>x.event)};
   const pc=g.primary_cusp; const s=csl(c,pc); const S=sig(c,s);
   const pos=new Set([...g.supporting,pc]);
-  // a supporting house must not also count against the event
   const neg=new Set(g.unfavorable.filter(h=>!pos.has(h)));
   const ph=[...S].filter(h=>pos.has(h)), nh=[...S].filter(h=>neg.has(h));
   const score=ph.length-nh.length;
   let supported=score>0&&ph.length>0;
-  const ADV=["death","die","disease","sick","accident","loss","rape","imprison",
-    "abscond","danger","criminal","depression","removal","suspension","compulsory",
-    "theft","defect","problems","unnatural","break in service","secret activities"];
-  let adverse=ADV.some(k=>g.event.toLowerCase().includes(k));
-  const kar=karakaCheck(c,g,pc,s,S);
-  if(kar.indicated){ supported=true; adverse=true; }
-  const verdict=adverse
-    ? (supported?"Indicated":score<0?"Not indicated":"Weak / uncertain")
-    : (supported?"Favourable":score<0?"Unfavourable":"Mixed / weak");
-  const meaning=kar.indicated
-    ? "Surgical/malefic karaka connects to the cusp -> "+kar.reason
-    : supported
-    ? "The chart SUPPORTS this event - it is astrologically indicated (not a comment on whether the outcome is good)."
-    : score<0 ? "The chart does NOT support this event - it is not clearly indicated."
-    : "Weak / mixed - the chart neither clearly supports nor denies this event.";
+  let adverse=isAdverse(g.event);
+  const sev=severityCheck(c,g,pc,s,S,supported);
+  let verdict,meaning,event_type=null,severity=null,karaka_indicated=false,karaka_reason=null;
+  if(sev){ adverse=true; severity=sev.mode; verdict=sev.verdict; meaning=sev.reason;
+    karaka_reason=sev.reason; karaka_indicated=sev.karaka_indicated; event_type=sev.event_type;
+    supported=sev.mode==="strong";
+  } else if(adverse){
+    verdict=supported?"Indicated":score<0?"Not indicated":"Weak / uncertain";
+    meaning=supported?"The chart SUPPORTS this event - it is astrologically indicated (not a comment on whether the outcome is good)."
+      :score<0?"The chart does NOT support this event - it is not clearly indicated."
+      :"Weak / mixed - the chart neither clearly supports nor denies this event.";
+  } else {
+    verdict=supported?"Favourable":score<0?"Unfavourable":"Mixed / weak";
+    meaning=supported?"The chart SUPPORTS this event - it is astrologically indicated (not a comment on whether the outcome is good)."
+      :score<0?"The chart does NOT support this event - it is not clearly indicated."
+      :"Weak / mixed - the chart neither clearly supports nor denies this event.";
+  }
   return {event:g.event,primary_cusp:pc,csl:s,adverse,supported,meaning,
           csl_signifies:[...S].sort((a,b)=>a-b),
           supporting:g.supporting,favourable:g.favorable,unfavourable:g.unfavorable,
           positive_hits:ph.sort((a,b)=>a-b),negative_hits:nh.sort((a,b)=>a-b),
-          karaka_indicated:!!kar.indicated,karaka_reason:kar.reason,verdict,
+          severity,event_type,karaka_indicated,karaka_reason,verdict,
           significators:KP.houseSignificators(c,pc).map(([p,l])=>`${p}(${l})`)};
 }
 function horary(c,pc,eventHouses){ const s=csl(c,pc); const p=c.planets[s]; const S=sig(c,s); const reasons=[];
