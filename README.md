@@ -27,7 +27,7 @@ Works for natal and horary charts alike.
 
 ## What it computes
 
-- Planetary positions in the KP-New (Krishnamurti) ayanamsa, with retrograde flags.
+- Planetary positions in the KP ayanamsa as True Astrology Pro gives it, with retrograde flags.
 - Nakshatra / **star-lord / sub-lord / sub-sub-lord** for every planet and cusp
   (the 249-sub *Sub Lord Theory*).
 - Placidus house cusps and the **Cuspal Sub Lord (CSL)** for each house.
@@ -264,8 +264,22 @@ webapp/                    web-app source parts (kp_web.js, kp_predict.js,
 
 ## Notes & honest limitations
 
-- Ayanamsa is KP-New (Krishnamurti), as the horary/BTR write-ups instruct. It is
-  a configurable single line in `ephemeris.py`.
+- The browser build (`index.html`) works as **True Astrology Pro** does, so a chart
+  can be checked against that program to the arc-second:
+  - the ayanamsa is 22°22'15" at 1900.0, growing 50.2564" a year (23°25'11" in
+    1975), not the Swiss Ephemeris Krishnamurti value, which runs about 24" behind;
+  - the grahas are referred to the mean equinox of date, so the nutation in
+    longitude (17" in 1975) comes off with the ayanamsa (the mean node already is);
+  - the Lagna and the Placidus cusps are worked from the geocentric latitude (12°7'4"
+    N is 12°2'21" N), which moved Kusuma's Lagna by 94"; the gap between the two
+    latitudes grows towards 45° N.
+
+  Together these decide where a graha or cusp falls near a sign, star or sub
+  boundary. Check it with `node --test tests/*.test.js` (Kusuma, 22 Feb 1975, 16:30
+  IST, Nanjangud, against True Astrology Pro 5.8.7.1). The Python `kp_engine`
+  described in this README is not in this repository; if you keep a copy, it still
+  uses the Swiss Ephemeris KP ayanamsa and will differ from the browser build by
+  these amounts until its ayanamsa line (`ephemeris.py`) is changed too.
 - Rahu uses the **mean node** (KP convention).
 - The browser build uses the MIT-licensed *astronomy-engine* for positions; the
   Python build uses Swiss Ephemeris in Moshier mode (no data files needed). Both
