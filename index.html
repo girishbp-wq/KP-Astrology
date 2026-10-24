@@ -45,6 +45,8 @@ td.r{color:var(--bad);font-weight:700}
 .small{font-size:11px;color:var(--muted)}
 .hidden{display:none}
 .note{font-size:11px;color:var(--muted);margin-top:10px;line-height:1.5}
+.pst{font-size:11.5px;color:var(--muted);margin-top:4px;line-height:1.55}
+.pst a{color:var(--accent);cursor:pointer}
 .kv{display:flex;justify-content:space-between;font-size:12.5px;padding:3px 0;border-bottom:1px dashed var(--line)}
 select#event{font-size:13px}
 .subgrid{max-height:520px;overflow:auto}
@@ -71,7 +73,7 @@ select#event{font-size:13px}
 
       <div id="astroInputs">
         <label>Astrologer's location &amp; moment of judgement (drives Ruling Planets)</label>
-        <input id="acity" list="cities" placeholder="Type a city..." oninput="pickCity('a')"/>
+        <input id="acity" list="cities" placeholder="Type a city or town..." oninput="pickCity('a')"/>
         <div class="row">
           <div><label>Latitude</label><input id="alat" value="51:24:24 N"/></div>
           <div><label>Longitude</label><input id="alon" value="0:25:02 W"/></div>
@@ -91,7 +93,7 @@ select#event{font-size:13px}
           <div><label>Time (HH:MM:SS)</label><input id="time" type="time" step="1" value="14:30:00"/></div>
         </div>
         <label>City (auto-fills lat / lon / timezone)</label>
-        <input id="city" list="cities" placeholder="Type a city..." oninput="pickCity()"/>
+        <input id="city" list="cities" placeholder="Type a city or town..." oninput="pickCity()"/>
         <datalist id="cities"></datalist>
         <div class="row">
           <div><label>Latitude (D:M:S N/S)</label><input id="lat" value="19:04:34 N"/></div>
@@ -107,7 +109,7 @@ select#event{font-size:13px}
           <div><label>Approx time</label><input id="btime" type="time" step="1" value="14:30:00"/></div>
         </div>
         <label>City</label>
-        <input id="bcity" list="cities" placeholder="Type a city..." oninput="pickCity('b')"/>
+        <input id="bcity" list="cities" placeholder="Type a city or town..." oninput="pickCity('b')"/>
         <div class="row">
           <div><label>Latitude</label><input id="blat" value="19:04:34 N"/></div>
           <div><label>Longitude</label><input id="blon" value="72:52:40 E"/></div>
@@ -143,7 +145,7 @@ select#event{font-size:13px}
           <div><label>Search to</label><input id="tend" type="date"/></div>
         </div>
         <label>Place where the event happens (city)</label>
-        <input id="tcity" list="cities" placeholder="Type a city..." oninput="pickCity('t')"/>
+        <input id="tcity" list="cities" placeholder="Type a city or town..." oninput="pickCity('t')"/>
         <div class="row">
           <div><label>Latitude</label><input id="tlat" value="28:36:50 N"/></div>
           <div><label>Longitude</label><input id="tlon" value="77:12:32 E"/></div>
@@ -180,7 +182,7 @@ select#event{font-size:13px}
       <div id="horaryInputs" class="hidden">
         <label>Horary number (1-249)</label><input id="hnum" type="number" min="1" max="249" value="128"/>
         <label>Querent location (optional; judgement uses astrologer location)</label>
-        <input id="hcity" list="cities" placeholder="Type a city..." oninput="pickCity('h')"/>
+        <input id="hcity" list="cities" placeholder="Type a city or town..." oninput="pickCity('h')"/>
         <div class="row">
           <div><label>Latitude</label><input id="hlat" value="28:36:50 N"/></div>
           <div><label>Longitude</label><input id="hlon" value="77:12:32 E"/></div>
@@ -11210,31 +11212,155 @@ function bothCharts(chart) {
 return { southIndian, northIndian, bothCharts };
 });
 </script>
+<script>/* KP places + timezones (browser/Node): the UTC offset a place had on a given date, the online place search and the
+ * user's saved places. No dependencies; the page wires it to the forms below. */
+(function (root, factory) {
+  const mod = factory();
+  if (typeof module === "object" && module.exports) module.exports = mod;
+  else root.KPLACES = mod;
+})(typeof self !== "undefined" ? self : this, function () {
+"use strict";
+
+// ---- the UTC offset (hours) a timezone had on a date, from the browser's own timezone database ----
+// (daylight saving and historical changes included: India was +6:30 in the summer of 1944.)
+const fmts = {};
+function wallAsUtcMs(tzId, ms) {
+  let f = fmts[tzId];
+  if (!f) f = fmts[tzId] = new Intl.DateTimeFormat("en-US", { timeZone: tzId, hourCycle: "h23",
+    year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" });
+  const o = {}; for (const p of f.formatToParts(new Date(ms))) o[p.type] = p.value;
+  return Date.UTC(+o.year, +o.month - 1, +o.day, +o.hour % 24, +o.minute, +o.second);
+}
+function offsetAtUtc(tzId, ms) { return (wallAsUtcMs(tzId, ms) - Math.floor(ms / 1000) * 1000) / 3600000; }
+// local: {y, mo, d, h, mi, s} as the clock on the wall read. Null if the browser does not know the timezone.
+function tzOffsetHours(tzId, local) {
+  if (!tzId) return null;
+  try {
+    const wall = Date.UTC(local.y, local.mo - 1, local.d, local.h || 0, local.mi || 0, local.s || 0);
+    const guess = offsetAtUtc(tzId, wall);                 // the offset near that moment...
+    return offsetAtUtc(tzId, wall - guess * 3600000);      // ...and again at the UTC instant it implies
+  } catch (e) { return null; }
+}
+function formatOffset(hours) {
+  const s = Math.round(Math.abs(hours) * 3600), ss = s % 60;
+  return (hours < 0 ? "-" : "+") + Math.floor(s / 3600) + ":" + String(Math.floor((s % 3600) / 60)).padStart(2, "0")
+    + (ss ? ":" + String(ss).padStart(2, "0") : "");
+}
+// A place carries its timezone id (exact for the date) and, as a fallback, a fixed offset.
+function resolveTz(place, local) {
+  const o = place && place.tzId ? tzOffsetHours(place.tzId, local) : null;
+  if (o !== null) return o;
+  return place && typeof place.tz === "number" && isFinite(place.tz) ? place.tz : null;
+}
+
+// ---- the online place search (Open-Meteo's free geocoding API, built on GeoNames; no key) ----
+const GEOCODER = "https://geocoding-api.open-meteo.com/v1/search";
+function labelOf(r) {
+  const seen = new Set();
+  return [r.name, r.admin2, r.admin1, r.country_code].filter(Boolean).filter(x => {
+    const k = String(x).toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; }).join(", ");
+}
+function parseGeocode(json) {
+  const out = [], used = new Set();
+  for (const r of (json && Array.isArray(json.results) ? json.results : [])) {
+    if (!r || typeof r.latitude !== "number" || typeof r.longitude !== "number"
+      || !isFinite(r.latitude) || !isFinite(r.longitude)) continue;
+    let label = labelOf(r); if (!label) continue;
+    if (used.has(label)) label += " (" + r.latitude.toFixed(2) + ", " + r.longitude.toFixed(2) + ")";
+    if (used.has(label)) continue;
+    used.add(label);
+    out.push({ label, name: r.name, lat: r.latitude, lon: r.longitude, tzId: r.timezone || null });
+  }
+  return out;
+}
+// The API matches the place name only, so "Nanjangud, Karnataka" is searched as "Nanjangud".
+async function searchPlaces(query, opts) {
+  opts = opts || {};
+  const name = String(query || "").split(",")[0].trim();
+  if (name.length < (opts.minLength || 2)) return { ok: true, places: [] };
+  const doFetch = opts.fetch || (typeof fetch === "function" ? fetch : null);
+  if (!doFetch) return { ok: false, places: [], error: "this browser cannot reach the place search" };
+  const ctl = typeof AbortController === "function" ? new AbortController() : null;
+  let timedOut = false;
+  const timer = ctl && typeof setTimeout === "function"
+    ? setTimeout(() => { timedOut = true; ctl.abort(); }, opts.timeoutMs || 8000) : null;
+  try {
+    const res = await doFetch(GEOCODER + "?name=" + encodeURIComponent(name) + "&count=10&language=en&format=json",
+      ctl ? { signal: ctl.signal } : undefined);
+    if (!res.ok) return { ok: false, places: [], error: "the place search answered HTTP " + res.status };
+    return { ok: true, places: parseGeocode(await res.json()) };
+  } catch (e) {
+    return { ok: false, places: [], error: timedOut ? "the place search timed out" : String((e && e.message) || e) };
+  } finally { if (timer !== null) clearTimeout(timer); }
+}
+
+// ---- the user's saved places (this browser only) ----
+const KEY = "kp_places_v1", MAX_SAVED = 200;
+const validCoords = (lat, lon) => isFinite(lat) && isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180;
+function createStore(storage) {
+  let mem = {};                                  // used when the browser has no storage, or refuses it
+  function read() {
+    if (!storage) return mem;
+    try {
+      const o = JSON.parse(storage.getItem(KEY) || "{}");
+      return o && typeof o === "object" && !Array.isArray(o) ? o : {};
+    } catch (e) { return mem; }
+  }
+  function write(o) { mem = o; if (!storage) return; try { storage.setItem(KEY, JSON.stringify(o)); } catch (e) { /* kept in memory */ } }
+  return {
+    list() { return Object.assign({}, read()); },
+    save(label, p) {
+      label = String(label || "").trim();
+      if (!label || !p || !validCoords(Number(p.lat), Number(p.lon))) return false;
+      const all = read(); delete all[label];     // re-added last, so the oldest go first when the list is full
+      all[label] = { lat: +p.lat, lon: +p.lon, tz: typeof p.tz === "number" && isFinite(p.tz) ? p.tz : null, tzId: p.tzId || null };
+      const keys = Object.keys(all); while (keys.length > MAX_SAVED) delete all[keys.shift()];
+      write(all); return true;
+    },
+    remove(label) { const all = read(); delete all[label]; write(all); }
+  };
+}
+// The built-in places, then the user's own (which win on the same label).
+function mergePlaces(builtin, saved) { return Object.assign({}, builtin, saved); }
+
+return { tzOffsetHours, formatOffset, resolveTz, parseGeocode, searchPlaces, createStore, mergePlaces };
+});
+</script>
 <script>// KP web UI logic. HTML strings use backtick template literals (newline-safe)
 // so automated line-wrapping cannot break them.
 "use strict";
-const CITIES = {
-  "New Delhi, IN": [28.6139, 77.2090, 5.5], "Mumbai, IN": [19.0760, 72.8777, 5.5],
-  "Chennai, IN": [13.0827, 80.2707, 5.5], "Kolkata, IN": [22.5726, 88.3639, 5.5],
-  "Bengaluru, IN": [12.9716, 77.5946, 5.5], "Hyderabad, IN": [17.3850, 78.4867, 5.5],
-  "Pune, IN": [18.5204, 73.8567, 5.5], "Ahmedabad, IN": [23.0225, 72.5714, 5.5],
-  "Jaipur, IN": [26.9124, 75.7873, 5.5], "Lucknow, IN": [26.8467, 80.9462, 5.5],
-  "London, UK": [51.5074, -0.1278, 0], "New York, US": [40.7128, -74.0060, -5],
-  "Los Angeles, US": [34.0522, -118.2437, -8], "Chicago, US": [41.8781, -87.6298, -6],
-  "Toronto, CA": [43.6532, -79.3832, -5], "Dubai, AE": [25.2048, 55.2708, 4],
-  "Singapore, SG": [1.3521, 103.8198, 8], "Sydney, AU": [-33.8688, 151.2093, 10],
-  "Kathmandu, NP": [27.7172, 85.3240, 5.75], "Colombo, LK": [6.9271, 79.8612, 5.5],
-  "Karachi, PK": [24.8607, 67.0011, 5], "Dhaka, BD": [23.8103, 90.4125, 6],
-  "Tokyo, JP": [35.6762, 139.6503, 9], "Frankfurt, DE": [50.1109, 8.6821, 1],
-  "Paris, FR": [48.8566, 2.3522, 1], "Johannesburg, ZA": [-26.2041, 28.0473, 2],
-  "Sunbury-on-Thames, UK": [51.4066, -0.4173, 0]
+// The built-in places: [latitude, longitude, fixed UTC offset (the fallback), timezone id (what the offset is worked from)].
+const CITY_ROWS = {
+  "Nanjangud, Karnataka, IN": [12 + 7 / 60 + 4 / 3600, 76 + 41 / 60 + 2 / 3600, 5.5, "Asia/Kolkata"],
+  "New Delhi, IN": [28.6139, 77.2090, 5.5, "Asia/Kolkata"], "Mumbai, IN": [19.0760, 72.8777, 5.5, "Asia/Kolkata"],
+  "Chennai, IN": [13.0827, 80.2707, 5.5, "Asia/Kolkata"], "Kolkata, IN": [22.5726, 88.3639, 5.5, "Asia/Kolkata"],
+  "Bengaluru, IN": [12.9716, 77.5946, 5.5, "Asia/Kolkata"], "Hyderabad, IN": [17.3850, 78.4867, 5.5, "Asia/Kolkata"],
+  "Pune, IN": [18.5204, 73.8567, 5.5, "Asia/Kolkata"], "Ahmedabad, IN": [23.0225, 72.5714, 5.5, "Asia/Kolkata"],
+  "Jaipur, IN": [26.9124, 75.7873, 5.5, "Asia/Kolkata"], "Lucknow, IN": [26.8467, 80.9462, 5.5, "Asia/Kolkata"],
+  "London, UK": [51.5074, -0.1278, 0, "Europe/London"], "New York, US": [40.7128, -74.0060, -5, "America/New_York"],
+  "Los Angeles, US": [34.0522, -118.2437, -8, "America/Los_Angeles"], "Chicago, US": [41.8781, -87.6298, -6, "America/Chicago"],
+  "Toronto, CA": [43.6532, -79.3832, -5, "America/Toronto"], "Dubai, AE": [25.2048, 55.2708, 4, "Asia/Dubai"],
+  "Singapore, SG": [1.3521, 103.8198, 8, "Asia/Singapore"], "Sydney, AU": [-33.8688, 151.2093, 10, "Australia/Sydney"],
+  "Kathmandu, NP": [27.7172, 85.3240, 5.75, "Asia/Kathmandu"], "Colombo, LK": [6.9271, 79.8612, 5.5, "Asia/Colombo"],
+  "Karachi, PK": [24.8607, 67.0011, 5, "Asia/Karachi"], "Dhaka, BD": [23.8103, 90.4125, 6, "Asia/Dhaka"],
+  "Tokyo, JP": [35.6762, 139.6503, 9, "Asia/Tokyo"], "Frankfurt, DE": [50.1109, 8.6821, 1, "Europe/Berlin"],
+  "Paris, FR": [48.8566, 2.3522, 1, "Europe/Paris"], "Johannesburg, ZA": [-26.2041, 28.0473, 2, "Africa/Johannesburg"],
+  "Sunbury-on-Thames, UK": [51.4066, -0.4173, 0, "Europe/London"]
 };
-(function initCities() {
-  const dl = document.getElementById("cities");
-  Object.keys(CITIES).forEach(c => {
-    const o = document.createElement("option"); o.value = c; dl.appendChild(o);
-  });
-})();
+const BUILTIN_PLACES = {};
+Object.keys(CITY_ROWS).forEach(k => {
+  const r = CITY_ROWS[k]; BUILTIN_PLACES[k] = { lat: r[0], lon: r[1], tz: r[2], tzId: r[3] };
+});
+const PLACE_STORE = KPLACES.createStore((() => { try { return window.localStorage; } catch (e) { return null; } })());
+let SEARCHED = {};                       // places the online search found this visit, by label
+const PLACE_UI = {};                     // per form: what the line under the city box shows
+function knownPlaces() { return KPLACES.mergePlaces(BUILTIN_PLACES, PLACE_STORE.list()); }
+function allPlaces() { return Object.assign({}, SEARCHED, knownPlaces()); }
+function refreshPlaceList() {
+  const dl = document.getElementById("cities"); dl.innerHTML = "";
+  Object.keys(allPlaces()).forEach(c => { const o = document.createElement("option"); o.value = c; dl.appendChild(o); });
+}
+refreshPlaceList();
 let BTR_EVENTS = [];
 (function initEventTypes() {
   const sel = document.getElementById("bevType");
@@ -11267,19 +11393,112 @@ function renderBtrEvents() {
     + `<a href="#" onclick="removeBtrEvent(${i});return false" style="color:var(--bad)">remove</a></div>`
   ).join("");
 }
+// Each form's place fields, and the date/time its timezone offset is worked for.
+const PLACE_FIELDS = {
+  "":  { city: "city",  lat: "lat",  lon: "lon",  tz: "tz",  date: "date",   time: "time" },
+  "h": { city: "hcity", lat: "hlat", lon: "hlon", tz: "htz", date: "ajdate", time: "ajtime" },
+  "b": { city: "bcity", lat: "blat", lon: "blon", tz: "btz", date: "bdate",  time: "btime" },
+  "t": { city: "tcity", lat: "tlat", lon: "tlon", tz: "ttz", date: "tstart", time: null },
+  "a": { city: "acity", lat: "alat", lon: "alon", tz: "atz", date: "ajdate", time: "ajtime" }
+};
+const byId = id => document.getElementById(id);
+function placeLocal(f) {            // the date and time on the form, as the wall clock reads (noon if it has no time)
+  const d = (byId(f.date).value || "").split("-").map(Number);
+  if (d.length < 3 || d.some(isNaN)) return null;
+  const t = f.time && byId(f.time).value ? byId(f.time).value.split(":").map(Number) : [12, 0, 0];
+  return { y: d[0], mo: d[1], d: d[2], h: t[0] || 0, mi: t[1] || 0, s: t[2] || 0 };
+}
+function setPlaceUI(pfx, state) { PLACE_UI[pfx] = Object.assign({ msg: "", results: [], busy: false }, state); renderPlaceUI(pfx); }
+function renderPlaceUI(pfx) {
+  const f = PLACE_FIELDS[pfx], u = PLACE_UI[pfx] || { msg: "", results: [] }, v = byId(f.city).value.trim();
+  let h = u.msg ? `<div>${u.msg}</div>` : "";
+  u.results.forEach((p, i) => {
+    h += `<div><a href="#" onclick="usePlace('${pfx}',${i});return false">${esc(p.label)}</a> `
+      + `<span class="small">${esc(KBTR.toDMS(p.lat, "lat"))} ${esc(KBTR.toDMS(p.lon, "lon"))}</span></div>`;
+  });
+  if (v && !(v in allPlaces()) && !u.busy) h += `<div>${u.results.length ? "None of these? " : ""}<a href="#" onclick="saveTypedPlace('${pfx}');return false">Save this place</a> `
+    + `with the latitude, longitude and timezone below, to pick it by name next time</div>`;
+  if (v in PLACE_STORE.list()) h += `<div><a href="#" onclick="forgetPlace('${pfx}');return false">Forget this saved place</a></div>`;
+  byId(f.city + "Status").innerHTML = h;
+}
+// Fill the latitude, longitude and timezone from a place; the timezone follows the form's date from then on.
+function applyPlace(pfx, label, p) {
+  const f = PLACE_FIELDS[pfx], el = byId(f.city);
+  el.value = label; el.dataset.tzid = p.tzId || ""; el.dataset.tzmanual = ""; el.dataset.tzfb = p.tz === null || p.tz === undefined ? "" : p.tz;
+  byId(f.lat).value = KBTR.toDMS(p.lat, "lat"); byId(f.lon).value = KBTR.toDMS(p.lon, "lon");
+  refreshPlaceTz(pfx, label);
+}
+function refreshPlaceTz(pfx, label) {
+  const f = PLACE_FIELDS[pfx], el = byId(f.city);
+  if (el.dataset.tzmanual === "1") return;
+  const l = placeLocal(f) || { y: new Date().getFullYear(), mo: 1, d: 1, h: 12, mi: 0, s: 0 };
+  const place = { tzId: el.dataset.tzid || null, tz: el.dataset.tzfb === "" || el.dataset.tzfb === undefined ? null : Number(el.dataset.tzfb) };
+  const o = KPLACES.resolveTz(place, l);
+  if (o === null) { setPlaceUI(pfx, { msg: "Timezone not known for this place: set it by hand.", results: [] }); return; }
+  byId(f.tz).value = String(Math.round(o * 3600) / 3600);
+  const how = place.tzId && KPLACES.tzOffsetHours(place.tzId, l) !== null ? place.tzId + " on " + l.y + "-" + String(l.mo).padStart(2, "0") + "-" + String(l.d).padStart(2, "0") : "fixed offset";
+  setPlaceUI(pfx, { msg: esc((label || el.value) + " · UTC" + KPLACES.formatOffset(o) + " (" + how + ")"), results: [] });
+}
+let PLACE_SEARCH_SEQ = 0, PLACE_SEARCH_TIMER = null;
 function pickCity(pfx) {
   pfx = pfx || "";
-  const map = { "": ["city", "lat", "lon", "tz"], "h": ["hcity", "hlat", "hlon", "htz"],
-                "b": ["bcity", "blat", "blon", "btz"], "t": ["tcity", "tlat", "tlon", "ttz"],
-                "a": ["acity", "alat", "alon", "atz"] };
-  const ids = map[pfx]; const v = document.getElementById(ids[0]).value;
-  if (CITIES[v]) {
-    const c = CITIES[v];
-    document.getElementById(ids[1]).value = KBTR.toDMS(c[0], "lat");
-    document.getElementById(ids[2]).value = KBTR.toDMS(c[1], "lon");
-    document.getElementById(ids[3]).value = c[2];
+  const f = PLACE_FIELDS[pfx], el = byId(f.city), v = el.value.trim();
+  const p = allPlaces()[v];
+  if (p) {
+    applyPlace(pfx, v, p);
+    if (SEARCHED[v] && !(v in knownPlaces())) { PLACE_STORE.save(v, Object.assign({}, p, { tz: byId(f.tz).value === "" ? null : Number(byId(f.tz).value) })); refreshPlaceList(); }
+    return;
   }
+  el.dataset.tzid = "";
+  clearTimeout(PLACE_SEARCH_TIMER);
+  if (v.split(",")[0].trim().length < 3) { setPlaceUI(pfx, { msg: "", results: [] }); return; }
+  setPlaceUI(pfx, { msg: "Searching...", results: [], busy: true });
+  const seq = ++PLACE_SEARCH_SEQ;
+  PLACE_SEARCH_TIMER = setTimeout(async () => {
+    const r = await KPLACES.searchPlaces(v);
+    if (seq !== PLACE_SEARCH_SEQ) return;                    // a newer keystroke has taken over
+    if (!r.ok) {
+      setPlaceUI(pfx, { msg: "Online search is not available (" + esc(r.error) + "). The built-in and saved places still work; "
+        + "otherwise enter the latitude, longitude and timezone by hand.", results: [] }); return;
+    }
+    r.places.forEach(q => { SEARCHED[q.label] = { lat: q.lat, lon: q.lon, tz: null, tzId: q.tzId }; });
+    refreshPlaceList();
+    setPlaceUI(pfx, r.places.length
+      ? { msg: r.places.length + (r.places.length === 1 ? " place found: pick it" : " places found: pick one"), results: r.places }
+      : { msg: "No place found for " + esc(v) + ". Check the spelling, or enter the latitude, longitude and timezone by hand.", results: [] });
+  }, 350);
 }
+function usePlace(pfx, i) {
+  const q = (PLACE_UI[pfx] || { results: [] }).results[i]; if (!q) return;
+  const p = { lat: q.lat, lon: q.lon, tz: null, tzId: q.tzId };
+  applyPlace(pfx, q.label, p);
+  const f = PLACE_FIELDS[pfx], tz = byId(f.tz).value === "" ? null : Number(byId(f.tz).value);
+  PLACE_STORE.save(q.label, Object.assign({}, p, { tz })); refreshPlaceList(); renderPlaceUI(pfx);
+}
+function saveTypedPlace(pfx) {
+  const f = PLACE_FIELDS[pfx], el = byId(f.city), label = el.value.trim();
+  let lat, lon;
+  try { lat = KBTR.parseLat(byId(f.lat).value); lon = KBTR.parseLon(byId(f.lon).value); } catch (e) { lat = NaN; }
+  const tz = byId(f.tz).value === "" ? NaN : Number(byId(f.tz).value);
+  if (!PLACE_STORE.save(label, { lat, lon, tz: isFinite(tz) ? tz : null, tzId: el.dataset.tzid || null })) {
+    setPlaceUI(pfx, { msg: "Enter a valid latitude and longitude first (for example 12:7:4 N and 76:41:2 E).", results: [] }); return;
+  }
+  refreshPlaceList(); setPlaceUI(pfx, { msg: esc(label) + " saved in this browser.", results: [] });
+}
+function forgetPlace(pfx) {
+  const f = PLACE_FIELDS[pfx], label = byId(f.city).value.trim();
+  PLACE_STORE.remove(label); refreshPlaceList(); setPlaceUI(pfx, { msg: esc(label) + " forgotten.", results: [] });
+}
+(function initPlaces() {
+  Object.keys(PLACE_FIELDS).forEach(pfx => {
+    const f = PLACE_FIELDS[pfx], city = byId(f.city);
+    const st = document.createElement("div"); st.id = f.city + "Status"; st.className = "pst"; city.insertAdjacentElement("afterend", st);
+    // the timezone follows the date and time on the form, unless it was typed in by hand
+    [f.date, f.time].filter(Boolean).forEach(id => ["input", "change"].forEach(ev =>
+      byId(id).addEventListener(ev, () => { if (city.dataset.tzid || city.dataset.tzfb) refreshPlaceTz(pfx, city.value.trim()); })));
+    byId(f.tz).addEventListener("input", () => { city.dataset.tzmanual = "1"; });
+  });
+})();
 let MODE = "natal";
 function setMode(m) {
   MODE = m;
