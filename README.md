@@ -137,6 +137,30 @@ From that feedback the Learn dashboard shows:
   West and South are negative. The web app fills these automatically from the
   city picker.
 
+## Places and timezones
+
+Type a city or town in any place box (Natal, BTR, Timing, astrologer's location):
+
+- **Built-in and saved places** are suggested as you type. A place you pick from the
+  online search is saved in your browser automatically, so it works offline and
+  without searching next time. If a place isn't found, enter its latitude and
+  longitude by hand and use **Save this place** under the box; **Forget this saved
+  place** removes one. Saved places live in this browser only.
+- **Online search** (three or more letters) asks the free
+  [Open-Meteo geocoding API](https://open-meteo.com/en/docs/geocoding-api), which is
+  built on GeoNames data, for matching towns. It needs an internet connection and
+  sends only the place name you typed; check Open-Meteo's terms of use if you
+  publish the page commercially. Offline, or if the search fails, the built-in and
+  saved places still work and the page says so.
+- **The timezone follows the date.** Each place carries its timezone id (such as
+  `Asia/Kolkata`), and the offset is worked out for the date and time on the form
+  with the browser's own timezone database: London is +1 in July and 0 in January,
+  Sydney +11 in January, and India was +6:30 in the summer of 1944. Type your own
+  value in the Timezone box and it is left alone until you pick a place again. The
+  Timing tab uses the offset on its "Search from" date for the whole window.
+- Check the timezone of births from before about 1950 against the birth record: the
+  database follows the official clock, and some cities kept their own local time.
+
 ## Using the Python CLI
 
 ```bash
